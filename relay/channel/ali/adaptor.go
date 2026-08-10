@@ -1,6 +1,7 @@
 package ali
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -125,6 +126,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			}
 		case constant.RelayModeCompletions:
 			fullRequestURL = fmt.Sprintf("%s/compatible-mode/v1/completions", info.ChannelBaseUrl)
+		case constant.RelayModeAudioSpeech:
+			fullRequestURL = fmt.Sprintf("%s%s", info.ChannelBaseUrl, cosyVoiceTTSEndpoint())
 		default:
 			fullRequestURL = fmt.Sprintf("%s/compatible-mode/v1/chat/completions", info.ChannelBaseUrl)
 		}
@@ -230,8 +233,19 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	if info.RelayMode != constant.RelayModeAudioSpeech {
+		return nil, errors.New("unsupported audio relay mode")
+	}
+	out, err := buildCosyVoiceRequest(info, request)
+	if err != nil {
+		return nil, err
+	}
+	jsonData, err := common.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling cosyvoice request: %w", err)
+	}
+	c.Set("response_format", "mp3")
+	return bytes.NewReader(jsonData), nil
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
@@ -260,6 +274,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			err, usage = aliImageHandler(a, c, resp, info)
 		case constant.RelayModeRerank:
 			err, usage = RerankHandler(c, resp, info)
+		case constant.RelayModeAudioSpeech:
+			usage, err = handleCosyVoiceTTSResponse(c, resp, info)
 		default:
 			adaptor := openai.Adaptor{}
 			usage, err = adaptor.DoResponse(c, resp, info)
