@@ -236,10 +236,13 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 	if info.RelayMode != constant.RelayModeAudioSpeech {
 		return nil, errors.New("unsupported audio relay mode")
 	}
-	out, err := buildCosyVoiceRequest(info, request)
+	// Resolves metadata.audio_url → registered voice_id (cloning, cached).
+	// Blocks on first registration per unique audio_url — see audio.go header.
+	voiceID, err := resolveCosyVoiceVoiceID(info, request)
 	if err != nil {
 		return nil, err
 	}
+	out := buildCosyVoiceRequest(info, request, voiceID)
 	jsonData, err := common.Marshal(out)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling cosyvoice request: %w", err)

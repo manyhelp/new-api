@@ -10,10 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// buildCosyVoiceRequest translates a dramaclaw IndexTTS2 voice-cloning request
-// (sent as OpenAI /v1/audio/speech with metadata.audio_url) into a DashScope
-// CosyVoice {model, input:{text}, parameters:{voice, format, ...}} request.
-// dramaclaw's contract is verified from generators/indextts2_fal.py:_generate_via_newapi.
+// buildCosyVoiceRequest builds the DashScope synthesis body for a resolved
+// voice_id: {model, input:{text, voice, format, sample_rate}}. Per the SDK
+// HttpSpeechSynthesizer (voice inside input).
 
 func newCosyVoiceInfo(upstream string) *relaycommon.RelayInfo {
 	return &relaycommon.RelayInfo{
@@ -21,50 +20,54 @@ func newCosyVoiceInfo(upstream string) *relaycommon.RelayInfo {
 	}
 }
 
-func TestBuildCosyVoiceRequestCloning(t *testing.T) {
-	meta := json.RawMessage(`{"audio_url":"https://example.com/voice.wav","should_use_prompt_for_emotion":true,"emotion_prompt":"excited"}`)
-	req := dto.AudioRequest{
-		Model:    "index-tts-2",
-		Input:    "你好世界",
-		Metadata: meta,
-	}
-	got, err := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
-	require.NoError(t, err)
+func TestBuildCosyVoiceRequest(t *testing.T) {
+	req := dto.AudioRequest{Model: "index-tts-2", Input: "你好世界"}
+	got := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req, "voice-abc123")
 	assert.Equal(t, "cosyvoice-v3.5-flash", got.Model)
 	assert.Equal(t, "你好世界", got.Input.Text)
-	assert.Equal(t, "https://example.com/voice.wav", got.Parameters.ReferenceAudio)
-	assert.Equal(t, "excited", got.Parameters.EmotionPrompt)
-	assert.Equal(t, defaultCosyVoiceVoice, got.Parameters.Voice)
-	assert.Equal(t, "mp3", got.Parameters.Format)
+	assert.Equal(t, "voice-abc123", got.Input.Voice)
+	assert.Equal(t, "mp3", got.Input.Format)
+	assert.Equal(t, 24000, got.Input.SampleRate)
 }
 
-func TestBuildCosyVoiceRequestWithoutEmotion(t *testing.T) {
-	meta := json.RawMessage(`{"audio_url":"https://example.com/v.wav"}`)
-	req := dto.AudioRequest{Model: "index-tts-2", Input: "hi", Metadata: meta}
-	got, err := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
-	require.NoError(t, err)
-	assert.Equal(t, "https://example.com/v.wav", got.Parameters.ReferenceAudio)
-	assert.Empty(t, got.Parameters.EmotionPrompt)
+func TestCosyVoicePrefix(t *testing.T) {
+	// deterministic + fits the DashScope rule (<10 chars, lowercase+digits).
+	a := cosyVoicePrefix("https://example.com/a.wav")
+	b := cosyVoicePrefix("https://example.com/a.wav")
+	assert.Equal(t, a, b)
+	assert.Equal(t, "dc"+a[2:], a) // starts with "dc"
+	assert.LessOrEqual(t, len(a), 10)
+	// different audio → different prefix
+	c := cosyVoicePrefix("https://example.com/b.wav")
+	assert.NotEqual(t, a, c)
 }
 
-func TestBuildCosyVoiceRequestNoMetadataUsesDefaultVoice(t *testing.T) {
+func TestResolveCosyVoiceVoiceIDNoMetadataUsesDefault(t *testing.T) {
 	req := dto.AudioRequest{Model: "index-tts-2", Input: "hi"}
-	got, err := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
+	voiceID, err := resolveCosyVoiceVoiceID(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
 	require.NoError(t, err)
-	assert.Empty(t, got.Parameters.ReferenceAudio)
-	assert.Equal(t, defaultCosyVoiceVoice, got.Parameters.Voice)
+	assert.Equal(t, defaultCosyVoiceVoice, voiceID)
 }
 
-func TestBuildCosyVoiceRequestEmptyMetadataObject(t *testing.T) {
+func TestResolveCosyVoiceVoiceIDEmptyMetadataUsesDefault(t *testing.T) {
 	req := dto.AudioRequest{Model: "index-tts-2", Input: "hi", Metadata: json.RawMessage(`{}`)}
-	got, err := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
+	voiceID, err := resolveCosyVoiceVoiceID(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
 	require.NoError(t, err)
-	assert.Empty(t, got.Parameters.ReferenceAudio)
-	assert.Equal(t, defaultCosyVoiceVoice, got.Parameters.Voice)
+	assert.Equal(t, defaultCosyVoiceVoice, voiceID)
 }
 
-func TestBuildCosyVoiceRequestBadMetadataErrors(t *testing.T) {
+func TestResolveCosyVoiceVoiceIDRequestVoiceWins(t *testing.T) {
+	req := dto.AudioRequest{Model: "index-tts-2", Input: "hi", Voice: "longxiaochun"}
+	voiceID, err := resolveCosyVoiceVoiceID(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
+	require.NoError(t, err)
+	assert.Equal(t, "longxiaochun", voiceID)
+}
+
+func TestResolveCosyVoiceVoiceIDBadMetadataErrors(t *testing.T) {
 	req := dto.AudioRequest{Model: "index-tts-2", Input: "hi", Metadata: json.RawMessage(`{invalid`)}
-	_, err := buildCosyVoiceRequest(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
+	_, err := resolveCosyVoiceVoiceID(newCosyVoiceInfo("cosyvoice-v3.5-flash"), req)
 	require.Error(t, err)
 }
+
+// NOTE: the metadata.audio_url path (registration + polling) does real HTTP to
+// DashScope and is not unit-tested here; it needs a live DashScope account.
