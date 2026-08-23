@@ -73,7 +73,12 @@ const MODEL_CATEGORY_RULES: readonly ModelCategoryRule[] = [
     keywords: ['qwen', 'qwq-', 'qvq-', 'tongyi', 'gte-'],
     pattern: /(?:^|[/.:])(?:text-embedding-v\d+|gui-plus|z-image)(?:$|[-_.:])/,
   },
-  { name: 'Wan', pattern: /(?:^|[/.:])wan(?:x?\d|[-_])/ },
+  {
+    name: 'Wan',
+    // happyhorse shares the ali DashScope video-synthesis channel with wan.
+    keywords: ['happyhorse'],
+    pattern: /(?:^|[/.:])wan(?:x?\d|[-_])/,
+  },
   { name: 'Moonshot', keywords: ['moonshot', 'kimi-'] },
   {
     name: 'MiniMax',

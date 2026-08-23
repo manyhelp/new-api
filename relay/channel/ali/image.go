@@ -317,12 +317,17 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 			return types.NewError(err, types.ErrorCodeBadResponse), nil
 		}
 		if aliResponse.Output.TaskStatus != "SUCCEEDED" {
+			// 任务创建成功但执行失败（如 wanx 尺寸超限 InvalidParameter）。
+			// 不能沿用创建响应的 200 状态码：客户端会把 error 体当成功响应，
+			// 只能报出 "images response missing data" 这类无因错误。
+			// 400 语义正确（请求参数被上游拒绝）、默认不触发渠道路由重试，
+			// 且符合上游"失败任务不计费"的计费语义。
 			return types.WithOpenAIError(types.OpenAIError{
 				Message: aliResponse.Output.Message,
 				Type:    "ali_error",
 				Param:   "",
 				Code:    aliResponse.Output.Code,
-			}, resp.StatusCode), nil
+			}, http.StatusBadRequest, types.ErrOptionWithSkipRetry()), nil
 		}
 	}
 

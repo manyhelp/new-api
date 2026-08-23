@@ -9,6 +9,7 @@ var ModelList = []string{
 	"doubao-seedance-1-5-pro-251215",
 	"doubao-seedance-2-0-260128",
 	"doubao-seedance-2-0-fast-260128",
+	"doubao-seedance-2-5-260628",
 }
 
 var ChannelName = "doubao-video"
@@ -35,6 +36,13 @@ var videoPriceTable = map[string]map[videoPriceKey]float64{
 	"doubao-seedance-2-0-fast-260128": {
 		{hasVideo: false}: 37.0,
 		{hasVideo: true}:  22.0,
+	},
+	// doubao-seedance-2-5-260628：官方仅公布 480P/720P token 刊例价（无视频输入
+	// 0.070 元/千 token、含视频输入 0.046 元/千 token）。1080p 档官方按秒计价，
+	// 此处未配置 → GetVideoInputRatio 返回基准倍率，由管理员在后台按官方刊例价调 ModelRatio。
+	"doubao-seedance-2-5-260628": {
+		{hasVideo: false}: 70.0,
+		{hasVideo: true}:  46.0,
 	},
 }
 

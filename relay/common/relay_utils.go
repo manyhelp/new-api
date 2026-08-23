@@ -222,6 +222,10 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		req.Images = []string{strings.TrimSpace(req.Image)}
 	}
 
+	// DramaClaw 稳定媒体协议：把 metadata 里的首帧/尾帧/参考图归一化到顶层
+	// req.Images（必须在 HasImage() 判定之前，否则 action 会被错判为文生视频）。
+	normalizeDramaclawMediaProtocol(&req)
+
 	if strings.TrimSpace(req.Model) == "" {
 		return createTaskError(fmt.Errorf("model field is required"), "missing_model", http.StatusBadRequest, true)
 	}
@@ -308,6 +312,65 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 		req.Images = []string{req.Image}
 	}
 
+	normalizeDramaclawMediaProtocol(&req)
+
 	storeTaskRequest(c, info, action, req)
 	return nil
+}
+
+// normalizeDramaclawMediaProtocol 把 DramaClaw 稳定媒体协议（DramaClaw-to-RelayClaw
+// video media protocol）的 metadata 字段归一化到顶层 req.Images。
+//
+// DramaClaw 画布视频节点把图片放在 metadata 扁平字段里：
+//   - image_url / first_frame_image → 首帧（首帧路径已自行提升到顶层 image）
+//   - last_frame_image              → 尾帧
+//   - reference_images              → 参考图数组（图片参考/全能参考模式）
+//
+// 各上游 adaptor 只消费顶层 req.Images / req.Image，不识别这些 metadata key，
+// 导致首尾帧的尾帧与图片参考模式的图片静默丢失（表现为百炼报
+// "wan2.7-i2v requires image, images, input_reference, or input.media"）。
+// 这里统一搬运为 Images = [已有顶层图..., 首帧(缺时), 尾帧(缺时), ...参考图]，
+// 保持首帧在前、尾帧第二的槽位约定（灵境 image_tail / 百炼 last_frame 均按此取）。
+// metadata 本身不动——adaptor 自有的 metadata 参数（如灵境 image_tail）继续生效。
+func normalizeDramaclawMediaProtocol(req *TaskSubmitReq) {
+	if req.Metadata == nil {
+		return
+	}
+	strVal := func(key string) string {
+		if v, ok := req.Metadata[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+	first := strVal("image_url")
+	if first == "" {
+		first = strVal("first_frame_image")
+	}
+	last := strVal("last_frame_image")
+
+	var refs []string
+	if raw, ok := req.Metadata["reference_images"].([]interface{}); ok {
+		for _, item := range raw {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				refs = append(refs, strings.TrimSpace(s))
+			}
+		}
+	}
+	if first == "" && last == "" && len(refs) == 0 {
+		return
+	}
+
+	merged := make([]string, 0, len(req.Images)+len(refs)+2)
+	merged = append(merged, req.Images...)
+	if len(merged) == 0 && first != "" {
+		merged = append(merged, first)
+	}
+	if last != "" && len(merged) < 2 {
+		merged = append(merged, last)
+	}
+	merged = append(merged, refs...)
+	req.Images = merged
+	if req.Image == "" && len(merged) > 0 {
+		req.Image = merged[0]
+	}
 }

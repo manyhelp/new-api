@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -60,8 +61,10 @@ type requestPayload struct {
 	Duration         *dto.IntValue  `json:"duration,omitempty"`
 	Frames           *dto.IntValue  `json:"frames,omitempty"`
 	Seed             *dto.IntValue  `json:"seed,omitempty"`
-	CameraFixed      *dto.BoolValue `json:"camera_fixed,omitempty"`
-	Watermark        *dto.BoolValue `json:"watermark,omitempty"`
+	CameraFixed           *dto.BoolValue `json:"camera_fixed,omitempty"`
+	Watermark             *dto.BoolValue `json:"watermark,omitempty"`
+	OmniReferenceTaskType string         `json:"omni_reference_task_type,omitempty"` // 仅 Seedance 2.5：auto/reference/edit/extend
+	OutputFormat          string         `json:"output_format,omitempty"`           // 仅 Seedance 2.5：mp4(默认)/mov
 }
 
 type responsePayload struct {
@@ -271,22 +274,129 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
+// isSeedanceModel 判断是否为火山方舟 Seedance 系列视频模型。dramaclaw 画布侧逻辑名
+// 形如 seedance-2.5 / seedance-2.0，经 new-api 通道 model mapping 映射到上游
+// doubao-seedance-2-5-260628 等；两种命名都命中。
+func isSeedanceModel(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "seedance")
+}
+
+// toStringSlice 把 metadata 里的切片值（[]interface{} 或 []string）规整为去空 []string。
+func toStringSlice(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			if t := strings.TrimSpace(s); t != "" {
+				out = append(out, t)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				if t := strings.TrimSpace(s); t != "" {
+					out = append(out, t)
+				}
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// buildSeedanceContent 把 dramaclaw "DramaClaw-to-RelayClaw stable video media protocol"
+// 的扁平键（first_frame_image/last_frame_image/reference_images/reference_videos/
+// reference_audios）与顶层单图 req.Image 重组为火山方舟 Ark 要求的带 role 的 content 数组。
+//
+// 火山方舟 Seedance content 元素需要 role 区分语义：
+//
+//	image_url  → first_frame / last_frame / reference_image
+//	video_url  → reference_video
+//	audio_url  → reference_audio
+//
+// dramaclaw 侧 _canonicalize_video_payload 会把首帧 pop 到顶层 payload["image"]（即
+// req.Image），尾帧/参考素材仍留在 metadata 扁平键。normalizeDramaclawMediaProtocol 不删
+// 这些键，故这里能从 req.Metadata 读取。纯参考模式下 normalize 会把 req.Image 污染为
+// reference_images[0]，因此仅当无参考图时才把 req.Image 视为首帧，避免误标。
+func buildSeedanceContent(req *relaycommon.TaskSubmitReq) []ContentItem {
+	md := req.Metadata
+	if md == nil {
+		md = map[string]interface{}{}
+	}
+	strVal := func(key string) string {
+		if v, ok := md[key].(string); ok {
+			return strings.TrimSpace(v)
+		}
+		return ""
+	}
+
+	refs := toStringSlice(md["reference_images"])
+	hasRefs := len(refs) > 0
+
+	var content []ContentItem
+
+	// 首帧：优先 metadata 扁平键（未被 canonicalize pop 的路径），否则回退顶层 req.Image。
+	// 仅首帧/首尾帧模式（无参考图）才把 req.Image 当首帧，避免纯参考模式的污染。
+	firstFrame := strVal("first_frame_image")
+	if firstFrame == "" {
+		firstFrame = strVal("image_url")
+	}
+	if firstFrame == "" && req.Image != "" && !hasRefs {
+		firstFrame = strings.TrimSpace(req.Image)
+	}
+	if firstFrame != "" {
+		content = append(content, ContentItem{
+			Type:     "image_url",
+			ImageURL: &MediaURL{URL: firstFrame},
+			Role:     "first_frame",
+		})
+	}
+
+	// 尾帧
+	if last := strVal("last_frame_image"); last != "" {
+		content = append(content, ContentItem{
+			Type:     "image_url",
+			ImageURL: &MediaURL{URL: last},
+			Role:     "last_frame",
+		})
+	}
+
+	// 参考图片（Seedance 2.5 最多 30 张，2.0 系列最多 9 张，由上游校验上限）
+	for _, url := range refs {
+		content = append(content, ContentItem{
+			Type:     "image_url",
+			ImageURL: &MediaURL{URL: url},
+			Role:     "reference_image",
+		})
+	}
+
+	// 参考视频
+	for _, url := range toStringSlice(md["reference_videos"]) {
+		content = append(content, ContentItem{
+			Type:     "video_url",
+			VideoURL: &MediaURL{URL: url},
+			Role:     "reference_video",
+		})
+	}
+
+	// 参考音频
+	for _, url := range toStringSlice(md["reference_audios"]) {
+		content = append(content, ContentItem{
+			Type:     "audio_url",
+			AudioURL: &MediaURL{URL: url},
+			Role:     "reference_audio",
+		})
+	}
+
+	return content
+}
+
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
 	r := requestPayload{
 		Model:   req.Model,
 		Content: []ContentItem{},
-	}
-
-	// Add images if present
-	if req.HasImage() {
-		for _, imgURL := range req.Images {
-			r.Content = append(r.Content, ContentItem{
-				Type: "image_url",
-				ImageURL: &MediaURL{
-					URL: imgURL,
-				},
-			})
-		}
 	}
 
 	metadata := req.Metadata
@@ -294,7 +404,28 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
 
-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
+	// Seedance 系列按火山方舟协议为每个素材标注 role（首帧/尾帧/参考图/视频/音频）。
+	// dramaclaw 把多图放在 metadata 扁平键 + 顶层 req.Image，这里重组为带 role 的 content。
+	// 非 Seedance 模型（其他 Doubao 视频模型）保持原行为：顶层 images 标成无 role 的 image_url。
+	if isSeedanceModel(req.Model) {
+		if seedanceContent := buildSeedanceContent(req); len(seedanceContent) > 0 {
+			r.Content = seedanceContent
+		}
+	} else if req.HasImage() {
+		for _, imgURL := range req.Images {
+			r.Content = append(r.Content, ContentItem{
+				Type:     "image_url",
+				ImageURL: &MediaURL{URL: imgURL},
+			})
+		}
+	}
+
+	// 时长优先取请求级 `duration`（int，dramaclaw 通用契约透传），回退 legacy `seconds`（string）。
+	// 两者都缺时保留 UnmarshalMetadata 可能写入的 metadata duration；全缺则 r.Duration 为 nil，
+	// 火山 Seedance 2.5 会走默认 -1（[4,30] 智能选择），导致时长不可控（如画布选 4s 却出 15s）。
+	if req.Duration > 0 {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+	} else if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
 	}
 

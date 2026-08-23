@@ -37,6 +37,7 @@ import (
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	taskGemini "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
+	taskjdcloud "github.com/QuantumNous/new-api/relay/channel/task/jdcloud"
 	taskjimeng "github.com/QuantumNous/new-api/relay/channel/task/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/task/kling"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
@@ -164,6 +165,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskdoubao.TaskAdaptor{}
 		case constant.ChannelTypeSora, constant.ChannelTypeOpenAI:
 			return &tasksora.TaskAdaptor{}
+		case constant.ChannelTypeJDCloud:
+			return &taskjdcloud.TaskAdaptor{}
 		case constant.ChannelTypeGemini:
 			return &taskGemini.TaskAdaptor{}
 		case constant.ChannelTypeMiniMax:
