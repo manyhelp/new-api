@@ -23,6 +23,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
+		apiRouter.GET("/videos/:task_id", controller.ServeVideoFile)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
 		apiRouter.GET("/notice", controller.GetNotice)
@@ -331,6 +332,13 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		vendorRoute := apiRouter.Group("/vendors")
+		videoDownloadRoute := apiRouter.Group("/video-download")
+		videoDownloadRoute.Use(middleware.AdminAuth())
+		{
+			videoDownloadRoute.GET("/list", controller.GetVideoDownloadList)
+			videoDownloadRoute.POST("/retry/:task_id", controller.RetryVideoDownloadByTask)
+			videoDownloadRoute.DELETE("/:id", controller.DeleteVideoDownloadByID)
+		}
 		vendorRoute.Use(middleware.AdminAuth())
 		{
 			vendorRoute.GET("/", controller.GetAllVendors)

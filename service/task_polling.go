@@ -543,8 +543,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {
-			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
-			task.PrivateData.ResultURL = taskResult.Url
+			if ShouldLocalizeVideo() {
+				EnqueueVideoDownload(task.TaskID, task.UserId, task.ChannelId, taskResult.Url)
+				task.PrivateData.ResultURL = ""
+			} else {
+				// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
+				task.PrivateData.ResultURL = taskResult.Url
+			}
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
