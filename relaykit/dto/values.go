@@ -30,9 +30,14 @@ func (s StringValue) MarshalJSON() ([]byte, error) {
 type IntValue int
 
 func (i *IntValue) UnmarshalJSON(b []byte) error {
-	var n int
+	// Accept JSON numbers first. Use float64 rather than int so fractional
+	// numbers (e.g. ali ``usage.duration`` returning ``5.0`` or ``5.5``) parse
+	// instead of falling through and failing the whole struct unmarshal; the
+	// value is truncated to int, matching the existing string-branch Atoi
+	// semantics.
+	var n float64
 	if err := json.Unmarshal(b, &n); err == nil {
-		*i = IntValue(n)
+		*i = IntValue(int(n))
 		return nil
 	}
 	var s string
