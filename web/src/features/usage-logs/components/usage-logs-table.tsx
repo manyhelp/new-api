@@ -175,6 +175,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const isCommon = logCategory === 'common'
+  const isImage = logCategory === 'image'
 
   return (
     <DataTablePage
@@ -199,8 +200,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         />
       }
       toolbar={
-        isCommon ? (
-          <CommonLogsFilterBar table={table} />
+        isCommon || isImage ? (
+          <CommonLogsFilterBar
+            table={table}
+            section={isImage ? 'image' : 'common'}
+          />
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
         )

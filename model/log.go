@@ -465,7 +465,12 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, imageOnly bool) (logs []*Log, total int64, err error) {
+	// image_only: 只看标准生图（/v1/images/*）的消费日志。强制 type=Consume，
+	// 使 other 列 LIKE 只扫消费行，不命中同样写 request_path 的 error/task-billing 日志。
+	if imageOnly && logType == LogTypeUnknown {
+		logType = LogTypeConsume
+	}
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -499,6 +504,11 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if imageOnly {
+		if tx, err = applyExplicitLogTextFilter(tx, "logs.other", "%/v1/images/%"); err != nil {
+			return nil, 0, err
+		}
 	}
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
@@ -561,7 +571,12 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, imageOnly bool) (logs []*Log, total int64, err error) {
+	// image_only: 只看标准生图（/v1/images/*）的消费日志。强制 type=Consume，
+	// 使 other 列 LIKE 只扫消费行，不命中同样写 request_path 的 error/task-billing 日志。
+	if imageOnly && logType == LogTypeUnknown {
+		logType = LogTypeConsume
+	}
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -589,6 +604,11 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	if imageOnly {
+		if tx, err = applyExplicitLogTextFilter(tx, "logs.other", "%/v1/images/%"); err != nil {
+			return nil, 0, err
+		}
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {

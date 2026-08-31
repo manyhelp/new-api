@@ -36,6 +36,7 @@ import {
   type AudioClip,
 } from '../dialogs/audio-preview-dialog'
 import { FailReasonDialog } from '../dialogs/fail-reason-dialog'
+import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 import {
   createDurationColumn,
@@ -188,6 +189,26 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         )
       },
       meta: { mobileTitle: true },
+    },
+    {
+      id: 'model',
+      header: t('Model'),
+      cell: ({ row }) => {
+        const props = row.original.properties
+        const origin = props?.origin_model_name
+        const upstream = props?.upstream_model_name
+        if (!origin && !upstream) {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        return (
+          <ModelBadge
+            modelName={origin || upstream || ''}
+            actualModel={
+              upstream && upstream !== origin ? upstream : undefined
+            }
+          />
+        )
+      },
     },
     createDurationColumn<TaskLog>({
       submitTimeKey: 'submit_time',

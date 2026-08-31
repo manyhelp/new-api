@@ -273,6 +273,20 @@ export async function fetchLogsByCategory(
     return isAdmin ? await getAllLogs(params) : await getUserLogs(params)
   }
 
+  if (logCategory === 'image') {
+    // 生图日志：复用 Log 表查询，注入 image_only 让后端按 other.request_path
+    // 过滤 /v1/images/* 消费日志（type=2 由后端强制）。路由 beforeLoad 已剥掉 type。
+    const params = buildApiParams({
+      page,
+      pageSize,
+      searchParams,
+      columnFilters,
+      isAdmin,
+    })
+    params.image_only = true
+    return isAdmin ? await getAllLogs(params) : await getUserLogs(params)
+  }
+
   // For drawing and task logs
   const baseParams = buildBaseParams({
     page,

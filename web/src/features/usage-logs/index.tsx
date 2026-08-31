@@ -53,6 +53,9 @@ const SECTION_META: Record<UsageLogsSectionId, { titleKey: string }> = {
   task: {
     titleKey: 'Task Logs',
   },
+  image: {
+    titleKey: 'Image Logs',
+  },
 }
 
 function UsageLogsContent() {
@@ -118,9 +121,14 @@ function UsageLogsContent() {
   )
 
   const pageMeta =
-    activeCategory === 'common' ? SECTION_META.common : SECTION_META.task
+    activeCategory === 'common'
+      ? SECTION_META.common
+      : activeCategory === 'image'
+        ? SECTION_META.image
+        : SECTION_META.task
   const showTaskSwitcher =
-    activeCategory !== 'common' && visibleSections.length > 1
+    (activeCategory === 'drawing' || activeCategory === 'task') &&
+    visibleSections.length > 1
 
   return (
     <>

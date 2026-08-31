@@ -107,6 +107,9 @@ function buildSearchSourceKey(values: {
 
 interface CommonLogsFilterBarProps<TData> {
   table: Table<TData>
+  /** Which usage-logs section this bar drives. 'image' omits the log-type
+   * filter and the `type` search param (backend forces Consume via image_only). */
+  section?: 'common' | 'image'
 }
 
 export function CommonLogsFilterBar<TData>(
@@ -119,6 +122,9 @@ export function CommonLogsFilterBar<TData>(
   const { isAdminView: isAdmin } = useLogsViewScope()
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+
+  const section = props.section ?? 'common'
+  const isCommonSection = section === 'common'
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -186,25 +192,25 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const handleApply = useCallback(() => {
-    const filterParams = buildSearchParams(filters, 'common')
+    const filterParams = buildSearchParams(filters, section)
     navigate({
       to: '/usage-logs/$section',
-      params: { section: 'common' },
+      params: { section },
       search: {
         ...filterParams,
-        type: [logType],
+        ...(isCommonSection ? { type: [logType] } : {}),
         page: 1,
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, navigate, queryClient])
+  }, [filters, logType, navigate, queryClient, section, isCommonSection])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
     const resetFilters: CommonLogFilters = { startTime: start, endTime: end }
     const resetSearch = {
-      type: [LOG_TYPE_ALL_VALUE],
+      ...(isCommonSection ? { type: [LOG_TYPE_ALL_VALUE] } : {}),
       startTime: start.getTime(),
       endTime: end.getTime(),
     }
@@ -216,7 +222,7 @@ export function CommonLogsFilterBar<TData>(
 
     navigate({
       to: '/usage-logs/$section',
-      params: { section: 'common' },
+      params: { section },
       search: {
         page: 1,
         ...resetSearch,
@@ -224,7 +230,7 @@ export function CommonLogsFilterBar<TData>(
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [navigate, queryClient])
+  }, [navigate, queryClient, section, isCommonSection])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -419,7 +425,7 @@ export function CommonLogsFilterBar<TData>(
           {dateRangeFilter}
           {modelFilter}
           {groupFilter}
-          {typeFilter}
+          {isCommonSection && typeFilter}
         </>
       }
       advancedFilters={advancedFilters}
@@ -428,7 +434,7 @@ export function CommonLogsFilterBar<TData>(
         <>
           {modelFilter}
           {groupFilter}
-          {typeFilter}
+          {isCommonSection && typeFilter}
           {advancedFilters}
         </>
       }

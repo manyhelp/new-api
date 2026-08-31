@@ -29,7 +29,7 @@ import type { UsageLog } from './data/schema'
 /**
  * Log category for different log types
  */
-export type LogCategory = 'common' | 'drawing' | 'task'
+export type LogCategory = 'common' | 'drawing' | 'task' | 'image'
 
 // ============================================================================
 // Filter Types
@@ -287,6 +287,12 @@ export interface MidjourneyLog {
 // Task Logs Types
 // ============================================================================
 
+export interface TaskLogProperties {
+  input?: string
+  upstream_model_name?: string
+  origin_model_name?: string
+}
+
 export interface TaskLog {
   id: number
   user_id: number
@@ -302,6 +308,7 @@ export interface TaskLog {
   data?: string // JSON string
   fail_reason?: string
   status: string // NOT_START, SUBMITTED, IN_PROGRESS, SUCCESS, FAILURE, QUEUED, UNKNOWN
+  properties?: TaskLogProperties
   other?: string
   created_at?: number
   updated_at?: number
@@ -324,6 +331,7 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  image_only?: boolean
 }
 
 export interface GetLogsResponse {
