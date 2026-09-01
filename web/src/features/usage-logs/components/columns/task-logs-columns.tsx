@@ -210,6 +210,42 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
         )
       },
     },
+    {
+      id: 'request',
+      header: t('Request'),
+      cell: ({ row }) => {
+        const props = row.original.properties
+        const input = props?.input
+        const vr = props?.video_request
+        // 视频请求参数：模式 · 分辨率 · 时长（请求侧，区别于耗时列）
+        const videoParts = [
+          vr?.mode,
+          vr?.size,
+          vr?.duration && vr.duration > 0 ? `${vr.duration}s` : '',
+        ].filter(Boolean)
+        const hasInput = !!input
+        const hasVideo = videoParts.length > 0
+        if (!hasInput && !hasVideo) {
+          return <span className='text-muted-foreground/60 text-xs'>-</span>
+        }
+        return (
+          <div className='flex max-w-[220px] flex-col gap-0.5'>
+            {hasInput && (
+              <span className='truncate text-xs' title={input}>
+                {input}
+              </span>
+            )}
+            {hasVideo && (
+              <span className='text-muted-foreground/70 truncate text-[11px]'>
+                {videoParts.join(' · ')}
+              </span>
+            )}
+          </div>
+        )
+      },
+      size: 200,
+      maxSize: 240,
+    },
     createDurationColumn<TaskLog>({
       submitTimeKey: 'submit_time',
       finishTimeKey: 'finish_time',

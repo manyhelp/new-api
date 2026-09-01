@@ -9,5 +9,12 @@
   "Retain Days (0=no cleanup)": "Retain Days (0=no cleanup)",
   "Root permission required to change settings": "Root permission required to change settings",
   "Storage Directory": "Storage Directory",
-  "Video Downloads": "Video Downloads"
+  "Video Downloads": "Video Downloads",
+  "First Frame": "First Frame",
+  "Quality": "Quality",
+  "Reference Images": "Reference Images",
+  "Request Detail": "Request Detail",
+  "Resolution": "Resolution",
+  "Response Format": "Response Format",
+  "Result URL": "Result URL"
 }

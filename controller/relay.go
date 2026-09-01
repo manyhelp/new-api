@@ -601,6 +601,22 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
+		// 越详细越好：持久化视频请求快照（prompt→Input，mode/size/duration/首帧/参考图→VideoRequest）
+		// 到 Properties，供任务日志展示完整请求详情。PrivateData 不返回用户，故落 Properties。
+		if taskReq, trErr := relaycommon.GetTaskRequest(c); trErr == nil {
+			if taskReq.Prompt != "" {
+				task.Properties.Input = taskReq.Prompt
+			}
+			if taskReq.Mode != "" || taskReq.Size != "" || taskReq.Duration > 0 || taskReq.Image != "" || len(taskReq.Images) > 0 {
+				task.Properties.VideoRequest = &model.VideoRequestSnapshot{
+					Mode:     taskReq.Mode,
+					Size:     taskReq.Size,
+					Duration: taskReq.Duration,
+					Image:    taskReq.Image,
+					Images:   taskReq.Images,
+				}
+			}
+		}
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}

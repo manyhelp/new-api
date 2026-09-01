@@ -170,6 +170,33 @@ function formatRatio(ratio: number | undefined): string {
   return ratio.toFixed(4)
 }
 
+// Renders a reference image / first-frame / result value: a clickable link for
+// http(s) URLs, otherwise truncated text (base64 data URIs and other non-URL
+// values can be very long). Used in the request-detail section.
+function renderRefImage(url: string, key: string) {
+  if (!url) return null
+  const isUrl = /^https?:\/\//i.test(url)
+  const display = url.length > 120 ? url.slice(0, 120) + '…' : url
+  if (isUrl) {
+    return (
+      <a
+        key={key}
+        href={url}
+        target='_blank'
+        rel='noreferrer'
+        className='break-all text-blue-600 hover:underline dark:text-blue-400'
+      >
+        {display}
+      </a>
+    )
+  }
+  return (
+    <span key={key} className='break-all'>
+      {display}
+    </span>
+  )
+}
+
 function getUsageBillingPathLabel(
   t: TFunction,
   adminInfo: LogOtherData['admin_info']
@@ -1053,6 +1080,85 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('Actual Model')}
               value={other.upstream_model_name}
               mono
+            />
+          </DetailSection>
+        )}
+
+        {/* Request detail (image / video): full prompt + params, the "越详细越好" surface */}
+        {other?.image_request && (
+          <DetailSection label={t('Request Detail')}>
+            {other.image_request.prompt && (
+              <DetailRow
+                label={t('Prompt')}
+                value={other.image_request.prompt}
+                mono
+              />
+            )}
+            {other.image_request.model && (
+              <DetailRow label={t('Model')} value={other.image_request.model} mono />
+            )}
+            {other.image_request.size && (
+              <DetailRow label={t('Size')} value={other.image_request.size} mono />
+            )}
+            {other.image_request.quality && (
+              <DetailRow label={t('Quality')} value={other.image_request.quality} />
+            )}
+            {other.image_request.n != null && (
+              <DetailRow label={t('Count')} value={String(other.image_request.n)} />
+            )}
+            {other.image_request.style && (
+              <DetailRow label={t('Style')} value={other.image_request.style} />
+            )}
+            {other.image_request.response_format && (
+              <DetailRow
+                label={t('Response Format')}
+                value={other.image_request.response_format}
+              />
+            )}
+          </DetailSection>
+        )}
+        {other?.task_request && (
+          <DetailSection label={t('Request Detail')}>
+            {other.task_request.prompt && (
+              <DetailRow label={t('Prompt')} value={other.task_request.prompt} mono />
+            )}
+            {other.task_request.mode && (
+              <DetailRow label={t('Mode')} value={other.task_request.mode} />
+            )}
+            {other.task_request.size && (
+              <DetailRow label={t('Resolution')} value={other.task_request.size} mono />
+            )}
+            {other.task_request.duration != null && other.task_request.duration > 0 && (
+              <DetailRow
+                label={t('Duration')}
+                value={`${other.task_request.duration}s`}
+              />
+            )}
+            {other.task_request.image && (
+              <DetailRow
+                label={t('First Frame')}
+                value={renderRefImage(other.task_request.image, 'img')}
+              />
+            )}
+            {other.task_request.images && other.task_request.images.length > 0 && (
+              <DetailRow
+                label={t('Reference Images')}
+                value={
+                  <div className='flex max-h-40 flex-col gap-0.5 overflow-y-auto'>
+                    {other.task_request.images.map((img, i) =>
+                      renderRefImage(img, `img-${i}`)
+                    )}
+                  </div>
+                }
+              />
+            )}
+          </DetailSection>
+        )}
+        {other?.result_url && (
+          <DetailSection label={t('Result')}>
+            <DetailRow
+              label={t('Result URL')}
+              value={renderRefImage(other.result_url, 'result')}
             />
           </DetailSection>
         )}

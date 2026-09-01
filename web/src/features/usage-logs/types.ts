@@ -113,6 +113,37 @@ export interface ToolSurchargeItem {
   price: number
 }
 
+// Image generation request snapshot (other.image_request), written by the
+// image relay so the image log records full request detail, not just the
+// size/quality/n summary shown in content.
+export interface ImageRequestDetail {
+  prompt?: string
+  model?: string
+  size?: string
+  quality?: string
+  n?: number
+  style?: string
+  response_format?: string
+}
+
+// Video generation request snapshot persisted on the task's Properties
+// (properties.video_request) at submit time so the task log shows
+// mode/resolution/duration/frames.
+export interface VideoRequestSnapshot {
+  mode?: string
+  size?: string
+  duration?: number
+  image?: string
+  images?: string[]
+}
+
+// Video request snapshot in the common log's other.task_request (written by
+// the task billing log at submit). Same shape as VideoRequestSnapshot but also
+// carries the prompt.
+export interface TaskRequestDetail extends VideoRequestSnapshot {
+  prompt?: string
+}
+
 export interface LogOtherData {
   admin_info?: {
     is_multi_key?: boolean
@@ -244,6 +275,13 @@ export interface LogOtherData {
   subscription_consumed?: number
   subscription_remain?: number
   subscription_total?: number
+  // Image generation request snapshot (prompt/model/size/quality/n/style/response_format)
+  image_request?: ImageRequestDetail
+  // Video task request snapshot (prompt/mode/size/duration/frames), written by
+  // the task billing log at submit so the consume log records full request detail.
+  task_request?: TaskRequestDetail
+  // Result URL for a completed video task, written on the recalculation/settlement log.
+  result_url?: string
 }
 
 /**
@@ -291,6 +329,7 @@ export interface TaskLogProperties {
   input?: string
   upstream_model_name?: string
   origin_model_name?: string
+  video_request?: VideoRequestSnapshot
 }
 
 export interface TaskLog {

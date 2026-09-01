@@ -156,6 +156,13 @@ type RelayInfo struct {
 	// It is surfaced onto the consume/task log's admin_info for auditing.
 	QuotaClamp *common.QuotaClamp
 
+	// ImageRequestDetail carries the image-generation request snapshot (prompt,
+	// model, size, quality, n, style, response_format) from ImageHelper to the
+	// consume-log writer (PostTextConsumeQuota), which merges it into the log's
+	// `other` JSON so the image log records full request detail, not just the
+	// size/quality/n summary. Nil for non-image relays.
+	ImageRequestDetail map[string]interface{}
+
 	// TieredBillingSnapshot captures tiered billing rules at pre-consume time.
 	// Auto-group retries refresh its group-dependent fields before each attempt
 	// and again before settlement. Non-nil only when billing mode is "tiered_expr".

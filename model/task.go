@@ -82,6 +82,21 @@ type Properties struct {
 	Input             string `json:"input"`
 	UpstreamModelName string `json:"upstream_model_name,omitempty"`
 	OriginModelName   string `json:"origin_model_name,omitempty"`
+	// VideoRequest captures the video generation request snapshot (mode/size/
+	// duration/first-frame/reference images) persisted at submit time so the
+	// task log records full request detail. Nil for non-video tasks.
+	VideoRequest *VideoRequestSnapshot `json:"video_request,omitempty"`
+}
+
+// VideoRequestSnapshot records the video generation request fields at submit
+// time. Persisted on Properties (which is returned to users) so the task log
+// shows mode/resolution/duration/frames; PrivateData is not returned.
+type VideoRequestSnapshot struct {
+	Mode     string   `json:"mode,omitempty"`
+	Size     string   `json:"size,omitempty"`
+	Duration int      `json:"duration,omitempty"`
+	Image    string   `json:"image,omitempty"`
+	Images   []string `json:"images,omitempty"`
 }
 
 func (m *Properties) Scan(val interface{}) error {

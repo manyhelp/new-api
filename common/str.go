@@ -22,6 +22,21 @@ func LocalLogPreview(content string) string {
 	return fmt.Sprintf("%s... [truncated, original_length=%d, limit=%d]", content[:LocalLogContentLimit], len(content), LocalLogContentLimit)
 }
 
+// TruncateRunes truncates s to at most maxRunes Unicode code points, appending
+// "..." when truncation occurs. It is rune-safe (never splits a multi-byte CJK
+// character). Used to keep log `content` fields short and readable while the
+// full value is preserved in the structured `other` JSON.
+func TruncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes]) + "..."
+}
+
 func GetStringIfEmpty(str string, defaultValue string) string {
 	if str == "" {
 		return defaultValue

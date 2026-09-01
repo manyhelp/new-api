@@ -523,6 +523,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 
+	// Image gen request snapshot (prompt/model/size/quality/n/style/response_format)
+	// stashed by ImageHelper. Top-level (not under admin_info) so the requesting
+	// user can see their own image-generation request in the log detail.
+	if relayInfo.ImageRequestDetail != nil {
+		other["image_request"] = relayInfo.ImageRequestDetail
+	}
+
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,

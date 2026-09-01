@@ -36,6 +36,33 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			}
 		}
 	}
+	// 越详细越好：把视频请求详情（prompt/时长/分辨率/模式）记进日志。content 截断保可读，
+	// 完整快照进 other.task_request。未存 task_request 的任务（如 Suno 走别的校验路径）跳过，无回归。
+	taskReqDetail := map[string]interface{}{}
+	if taskReq, trErr := relaycommon.GetTaskRequest(c); trErr == nil {
+		if taskReq.Prompt != "" {
+			logContent = fmt.Sprintf("%s, 提示词 %s", logContent, common.TruncateRunes(taskReq.Prompt, 80))
+			taskReqDetail["prompt"] = taskReq.Prompt
+		}
+		if taskReq.Mode != "" {
+			logContent = fmt.Sprintf("%s, 模式 %s", logContent, taskReq.Mode)
+			taskReqDetail["mode"] = taskReq.Mode
+		}
+		if taskReq.Size != "" {
+			logContent = fmt.Sprintf("%s, 分辨率 %s", logContent, taskReq.Size)
+			taskReqDetail["size"] = taskReq.Size
+		}
+		if taskReq.Duration > 0 {
+			logContent = fmt.Sprintf("%s, 时长 %ds", logContent, taskReq.Duration)
+			taskReqDetail["duration"] = taskReq.Duration
+		}
+		if taskReq.Image != "" {
+			taskReqDetail["image"] = taskReq.Image
+		}
+		if len(taskReq.Images) > 0 {
+			taskReqDetail["images"] = taskReq.Images
+		}
+	}
 	other := make(map[string]interface{})
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
@@ -52,6 +79,10 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
 	attachQuotaSaturation(c, info, other)
+	// 视频请求详情快照（prompt/mode/size/duration/首帧/参考图），顶层键，请求用户可在日志详情里看到自己的请求。
+	if len(taskReqDetail) > 0 {
+		other["task_request"] = taskReqDetail
+	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
@@ -259,6 +290,10 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	other["actual_quota"] = actualQuota
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
+	}
+	// 越详细越好：差额结算日志带上结果 URL，标明这笔结算对应哪个视频。请求侧详情已在提交日志记录，此处不重复。
+	if task.PrivateData.ResultURL != "" {
+		other["result_url"] = task.PrivateData.ResultURL
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,

@@ -145,6 +145,35 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if imageN > 0 {
 		logContent = append(logContent, fmt.Sprintf("生成数量 %d", imageN))
 	}
+	// 越详细越好：记录提示词/风格/响应格式。content 里按 rune 截断保可读，
+	// 完整请求快照进 other.image_request（由 PostTextConsumeQuota 落库）。
+	style := ""
+	if len(request.Style) > 0 {
+		var styleStr string
+		if err := common.Unmarshal(request.Style, &styleStr); err == nil {
+			style = styleStr
+		} else {
+			style = string(request.Style)
+		}
+	}
+	if request.Prompt != "" {
+		logContent = append(logContent, fmt.Sprintf("提示词 %s", common.TruncateRunes(request.Prompt, 80)))
+	}
+	if style != "" {
+		logContent = append(logContent, fmt.Sprintf("风格 %s", style))
+	}
+	if request.ResponseFormat != "" {
+		logContent = append(logContent, fmt.Sprintf("响应格式 %s", request.ResponseFormat))
+	}
+	info.ImageRequestDetail = map[string]interface{}{
+		"prompt":          request.Prompt,
+		"model":           request.Model,
+		"size":            request.Size,
+		"quality":         quality,
+		"n":               imageN,
+		"style":           style,
+		"response_format": request.ResponseFormat,
+	}
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
