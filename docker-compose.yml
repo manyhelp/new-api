@@ -26,8 +26,11 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./data:/data
-      - ./logs:/app/logs
+      # 绝对路径绑定到宿主机大盘 /data（与 dramaclaw 的 /data/docker/dramaclaw 惯例一致）。
+      # 勿改回相对路径 ./data —— 相对路径解析到 compose 项目目录所在文件系统，
+      # 若项目在 / 上，视频本地化下载（data/video_files）会把根文件系统写满。
+      - /data/docker/new-api/data:/data
+      - /data/docker/new-api/logs:/app/logs
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
 #      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
