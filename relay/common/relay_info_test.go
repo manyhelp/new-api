@@ -176,3 +176,84 @@ func TestInitChannelMetaRestoresRequestReasoningEffortForRetry(t *testing.T) {
 	info.InitChannelMeta(ctx)
 	assert.Equal(t, "max", info.ReasoningEffort)
 }
+
+func TestTaskSubmitReqUnmarshalJSONDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"int", `{"duration":5}`, 5},
+		{"string", `{"duration":"5"}`, 5},
+		{"float whole", `{"duration":5.0}`, 5},
+		{"float rounds up", `{"duration":4.6}`, 5},
+		{"float rounds down", `{"duration":4.4}`, 4},
+		{"float zero", `{"duration":0.0}`, 0},
+		{"omitted", `{"prompt":"x"}`, 0},
+		{"non-numeric string", `{"duration":"fast"}`, 0},
+		{"null", `{"duration":null}`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req TaskSubmitReq
+			require.NoError(t, req.UnmarshalJSON([]byte(tt.body)))
+			assert.Equal(t, tt.want, req.Duration)
+		})
+	}
+}
+
+func TestTaskSubmitReqVideoDisplaySize(t *testing.T) {
+	tests := []struct {
+		name string
+		req  TaskSubmitReq
+		want string
+	}{
+		{
+			"top-level size wins over metadata",
+			TaskSubmitReq{Size: "1280x720", Metadata: map[string]interface{}{"resolution": "480p", "ratio": "16:9"}},
+			"1280x720",
+		},
+		{"resolution+ratio 720p 16:9", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720p", "ratio": "16:9"}}, "1280x720"},
+		{"resolution+ratio 480p 1:1", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "480p", "ratio": "1:1"}}, "480x480"},
+		{"aspect_ratio fallback", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "1080p", "aspect_ratio": "9:16"}}, "1080x1920"},
+		{
+			"ratio preferred over aspect_ratio",
+			TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720p", "ratio": "1:1", "aspect_ratio": "16:9"}},
+			"720x720",
+		},
+		{"resolution uppercase normalized", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720P", "ratio": "16:9"}}, "1280x720"},
+		{"width+height numbers", TaskSubmitReq{Metadata: map[string]interface{}{"width": 1280.0, "height": 720.0}}, "1280x720"},
+		{"width+height strings", TaskSubmitReq{Metadata: map[string]interface{}{"width": "1280", "height": "720"}}, "1280x720"},
+		{"adaptive ratio empty", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720p", "ratio": "adaptive"}}, ""},
+		{"unknown ratio empty", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720p", "ratio": "21:9"}}, ""},
+		{"unknown resolution empty", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "4k", "ratio": "16:9"}}, ""},
+		{"missing ratio empty", TaskSubmitReq{Metadata: map[string]interface{}{"resolution": "720p"}}, ""},
+		{"nil metadata empty", TaskSubmitReq{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.req.VideoDisplaySize())
+		})
+	}
+}
+
+func TestTaskSubmitReqVideoDisplayDuration(t *testing.T) {
+	tests := []struct {
+		name string
+		req  TaskSubmitReq
+		want int
+	}{
+		{"top-level wins over metadata", TaskSubmitReq{Duration: 8, Metadata: map[string]interface{}{"duration": 5.0}}, 8},
+		{"metadata float", TaskSubmitReq{Metadata: map[string]interface{}{"duration": 5.0}}, 5},
+		{"metadata float rounds up", TaskSubmitReq{Metadata: map[string]interface{}{"duration": 4.6}}, 5},
+		{"metadata string", TaskSubmitReq{Metadata: map[string]interface{}{"duration": "5"}}, 5},
+		{"clamp huge", TaskSubmitReq{Metadata: map[string]interface{}{"duration": 9999999999.0}}, MaxTaskDurationSeconds},
+		{"clamp negative", TaskSubmitReq{Metadata: map[string]interface{}{"duration": -3.0}}, 0},
+		{"absent", TaskSubmitReq{}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, tt.req.VideoDisplayDuration())
+		})
+	}
+}

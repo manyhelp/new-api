@@ -607,11 +607,15 @@ func RelayTask(c *gin.Context) {
 			if taskReq.Prompt != "" {
 				task.Properties.Input = taskReq.Prompt
 			}
-			if taskReq.Mode != "" || taskReq.Size != "" || taskReq.Duration > 0 || taskReq.Image != "" || len(taskReq.Images) > 0 {
+			// size/duration 经只读 display 方法取值：DramaClaw 把分辨率/时长放进 metadata，
+			// 顶层 size/duration 为空；display 方法从 metadata 补全，不碰 adaptor 与计费消费的 req.Size/Duration。
+			displaySize := taskReq.VideoDisplaySize()
+			displayDuration := taskReq.VideoDisplayDuration()
+			if taskReq.Mode != "" || displaySize != "" || displayDuration > 0 || taskReq.Image != "" || len(taskReq.Images) > 0 {
 				task.Properties.VideoRequest = &model.VideoRequestSnapshot{
 					Mode:     taskReq.Mode,
-					Size:     taskReq.Size,
-					Duration: taskReq.Duration,
+					Size:     displaySize,
+					Duration: displayDuration,
 					Image:    taskReq.Image,
 					Images:   taskReq.Images,
 				}

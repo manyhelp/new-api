@@ -48,13 +48,16 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 			logContent = fmt.Sprintf("%s, 模式 %s", logContent, taskReq.Mode)
 			taskReqDetail["mode"] = taskReq.Mode
 		}
-		if taskReq.Size != "" {
-			logContent = fmt.Sprintf("%s, 分辨率 %s", logContent, taskReq.Size)
-			taskReqDetail["size"] = taskReq.Size
+		// size/duration 经只读 display 方法取值，与 task.Properties.VideoRequest 快照一致。
+		displaySize := taskReq.VideoDisplaySize()
+		if displaySize != "" {
+			logContent = fmt.Sprintf("%s, 分辨率 %s", logContent, displaySize)
+			taskReqDetail["size"] = displaySize
 		}
-		if taskReq.Duration > 0 {
-			logContent = fmt.Sprintf("%s, 时长 %ds", logContent, taskReq.Duration)
-			taskReqDetail["duration"] = taskReq.Duration
+		displayDuration := taskReq.VideoDisplayDuration()
+		if displayDuration > 0 {
+			logContent = fmt.Sprintf("%s, 时长 %ds", logContent, displayDuration)
+			taskReqDetail["duration"] = displayDuration
 		}
 		if taskReq.Image != "" {
 			taskReqDetail["image"] = taskReq.Image

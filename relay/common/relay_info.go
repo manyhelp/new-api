@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -912,10 +913,15 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		if err := common.Unmarshal(aux.Duration, &durationInt); err == nil {
 			t.Duration = durationInt
 		} else {
-			var durationStr string
-			if err := common.Unmarshal(aux.Duration, &durationStr); err == nil && durationStr != "" {
-				if v, err := strconv.Atoi(durationStr); err == nil {
-					t.Duration = v
+			var durationFloat float64
+			if err := common.Unmarshal(aux.Duration, &durationFloat); err == nil {
+				t.Duration = int(math.Round(durationFloat))
+			} else {
+				var durationStr string
+				if err := common.Unmarshal(aux.Duration, &durationStr); err == nil && durationStr != "" {
+					if v, err := strconv.Atoi(durationStr); err == nil {
+						t.Duration = v
+					}
 				}
 			}
 		}
@@ -952,6 +958,128 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 		}
 	}
 	return nil
+}
+
+// resolutionSizeTable maps DramaClaw cinema-generate-2.0 metadata
+// resolution+ratio pairs to a "WxH" display string. Per the integration doc
+// the video params (duration/resolution/ratio) travel inside metadata, not at
+// the top level, so adaptors read them from req.Metadata. Unknown or adaptive
+// combinations yield "" so the caller simply omits the field.
+var resolutionSizeTable = map[string]map[string]string{
+	"480p":  {"16:9": "854x480", "9:16": "480x854", "1:1": "480x480", "4:3": "640x480", "3:4": "480x640"},
+	"720p":  {"16:9": "1280x720", "9:16": "720x1280", "1:1": "720x720", "4:3": "960x720", "3:4": "720x960"},
+	"1080p": {"16:9": "1920x1080", "9:16": "1080x1920", "1:1": "1080x1080", "4:3": "1440x1080", "3:4": "1080x1440"},
+	"2k":    {"16:9": "2560x1440", "9:16": "1440x2560", "1:1": "1440x1440"},
+}
+
+// metadataString reads the first present metadata key as a trimmed string.
+// JSON numbers (float64) are stringified so callers handle resolution/ratio
+// uniformly whether the client sent strings or numbers.
+func metadataString(meta map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		v, ok := meta[key]
+		if !ok {
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if s := strings.TrimSpace(val); s != "" {
+				return s
+			}
+		case float64:
+			return strconv.FormatFloat(val, 'f', -1, 64)
+		}
+	}
+	return ""
+}
+
+// metadataInt reads the first present metadata key as an int. JSON numbers
+// (float64) are rounded; string values are parsed as int or float. The second
+// return is false when no key yields a usable integer.
+func metadataInt(meta map[string]interface{}, keys ...string) (int, bool) {
+	for _, key := range keys {
+		v, ok := meta[key]
+		if !ok {
+			continue
+		}
+		switch val := v.(type) {
+		case float64:
+			return int(math.Round(val)), true
+		case int:
+			return val, true
+		case string:
+			if s := strings.TrimSpace(val); s != "" {
+				if n, err := strconv.Atoi(s); err == nil {
+					return n, true
+				}
+				if f, err := strconv.ParseFloat(s, 64); err == nil {
+					return int(math.Round(f)), true
+				}
+			}
+		}
+	}
+	return 0, false
+}
+
+// VideoDisplaySize returns a "WxH" display size for the task log snapshot. It
+// is read-only and never mutates req.Size — that field feeds adaptors and
+// billing (PriceData.OtherRatios) with conflicting format expectations across
+// providers. Resolution is sourced from metadata so DramaClaw requests whose
+// top-level size is empty still display correctly. Returns "" when no size can
+// be derived (adaptive/unknown ratio), leaving the snapshot field empty.
+func (t *TaskSubmitReq) VideoDisplaySize() string {
+	if s := strings.TrimSpace(t.Size); s != "" {
+		return s
+	}
+	meta := t.Metadata
+	if meta == nil {
+		return ""
+	}
+	if w, ok := metadataInt(meta, "width", "w"); ok && w > 0 {
+		if h, ok := metadataInt(meta, "height", "h"); ok && h > 0 {
+			return fmt.Sprintf("%dx%d", w, h)
+		}
+	}
+	resolution := strings.ToLower(strings.TrimSpace(metadataString(meta, "resolution")))
+	if resolution == "" {
+		return ""
+	}
+	ratio := strings.TrimSpace(metadataString(meta, "ratio", "aspect_ratio"))
+	if ratio == "" {
+		return ""
+	}
+	if ratios, ok := resolutionSizeTable[resolution]; ok {
+		if size, ok := ratios[ratio]; ok {
+			return size
+		}
+	}
+	return ""
+}
+
+// VideoDisplayDuration returns a display duration in seconds for the task log
+// snapshot. Read-only; never mutates req.Duration. Sources metadata.duration
+// (DramaClaw wire format) as a fallback to the top-level field. Clamps to
+// [0, MaxTaskDurationSeconds] because this display path bypasses
+// validateTaskDurationBounds and must not surface an attacker-supplied huge
+// value into logs even though billing uses the separately-validated field.
+func (t *TaskSubmitReq) VideoDisplayDuration() int {
+	if t.Duration > 0 {
+		return clampTaskDisplayDuration(t.Duration)
+	}
+	if d, ok := metadataInt(t.Metadata, "duration"); ok {
+		return clampTaskDisplayDuration(d)
+	}
+	return 0
+}
+
+func clampTaskDisplayDuration(d int) int {
+	if d < 0 {
+		return 0
+	}
+	if d > MaxTaskDurationSeconds {
+		return MaxTaskDurationSeconds
+	}
+	return d
 }
 
 type TaskInfo struct {
